@@ -87,32 +87,6 @@ create_xc_partition()
     return 0
 }
 
-reread_partition_table()
-{
-    local DISK_DEV="$1"
-    local ATTEMPTS=0
-
-    echo "Re-reading partition table." >&2
-
-    while true ; do
-        ATTEMPTS=$((ATTEMPTS + 1))
-        echo -e "w\nY" | do_cmd gdisk "${DISK_DEV}" >&2 && break
-
-        if [ "${ATTEMPTS}" -gt 30 ] ; then
-            echo "ERROR: Unable to re-read partition table." >&2
-            return 1
-        fi
-
-        echo "Retrying..." >&2
-        sleep 1
-    done
-
-    echo "Waiting for udev to update device nodes." >&2
-    do_cmd udevadm settle >&2
-
-    return 0
-}
-
 realign_xc_partition()
 {
     local PARTITION="${XC_PARTITION}"
