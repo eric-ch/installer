@@ -308,39 +308,34 @@ bc_greater_or_equal()
     [ $(echo "$1 >= $2" | bc) = "1" ]
 }
 
+# Usage: get_partition_disk XC_PARTITION
+# Print the disk name component on stdout.
+# XC_PARTITION format is 'DISKNAME/PARTITION'
 get_partition_disk()
 {
-    local PARTITION="$1"
-    local DISK=$(echo "${PARTITION}" | cut -d '/' -f 1)
-
-    echo "${DISK}"
-
-    return 0
+    echo "${1%%/*}"
 }
 
+# Usage: get_partition_number XC_PARTITION
+# Print the partition number component on stdout.
+# XC_PARTITION format is 'DISKNAME/PARTITION'
 get_partition_number()
 {
-    local PARTITION="$1"
-    local PARTITION_NUM=$(echo "${PARTITION}" | cut -d '/' -f 2)
-
-    echo "${PARTITION_NUM}"
-
-    return 0
+    echo "${1##*/}"
 }
 
+# Usage: get_partition_node XC_PARTITION
+# Print the expected devnode name from XC_PARTITION on stdout.
 get_partition_node()
 {
     local PARTITION="$1"
     local DISK=$(get_partition_disk "${PARTITION}")
     local PARTITION_NUM=$(get_partition_number "${PARTITION}")
 
-    if [ $(echo "${DISK}" | grep "nvme") ]; then
-        echo "${DISK}p${PARTITION_NUM}"
-    else
-        echo "${DISK}${PARTITION_NUM}"
-    fi
-
-    return 0
+    case "${DISK}" in
+        "nvme"*) echo "${DISK}p${PARTITION_NUM}" ;;
+        *) echo "${DISK}${PARTITION_NUM}" ;;
+    esac
 }
 
 #-----------------------------------------------------------
