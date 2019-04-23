@@ -34,14 +34,14 @@ create_bios_boot_partition()
     local BBP_SIZE="+1M"  # 1 MiB
     local BBP_TYPE="EF02" # BIOS Boot Partition Typecode
 
-	if do_cmd sgdisk -p "${DISK_DEV}" | grep -i ${BBP_TYPE} >&2 ; then
-		echo "BBP already exists, continue." >&2
-		return 0
-	fi
+    if do_cmd sgdisk -q -p "${DISK_DEV}" | grep -q -i ${BBP_TYPE} >&2 ; then
+        echo "BBP already exists, continue." >&2
+        return 0
+    fi
 
-	echo "No BBP detected, attempting to create a BBP." >&2
+    echo "No BBP detected, attempting to create a BBP." >&2
     # Create the BBP
-    if ! do_cmd sgdisk -g -n ${BBP_PARTNUM}::${BBP_SIZE} -t ${BBP_PARTNUM}:${BBP_TYPE} "${DISK_DEV}" >&2 ; then
+    if ! do_cmd sgdisk -q -g -n ${BBP_PARTNUM}::${BBP_SIZE} -t ${BBP_PARTNUM}:${BBP_TYPE} "${DISK_DEV}" >/dev/null 2>&1 ; then
         echo "ERROR: Could not create BIOS Boot Partition." >&2
         return 1
     fi

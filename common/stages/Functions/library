@@ -385,9 +385,9 @@ reread_partition_table()
     local dev="$1"
 
     echo "Re-read partition table." >&2
-    vgchange -a n >&2
-    hdparm -z "${dev}" >&2
-    vgchange -a y >&2
+    vgchange -q -a n >&2
+    hdparm -q -z "${dev}" >&2
+    vgchange -q -a y >&2
     udevadm settle >&2
 }
 

@@ -18,7 +18,7 @@
 #
 
 create_lv() {
-    local dfl_opts="--zero n"
+    local dfl_opts="-q --zero n"
     local vg=$1
     local name=$2
     shift 2
@@ -37,8 +37,9 @@ mk_xc_lvm()
 {
     local PARTITION_DEV="$1"
 
-    do_cmd pvcreate -ff -y "${PARTITION_DEV}" || return 1
-    do_cmd vgcreate xenclient "${PARTITION_DEV}" || return 1
+    echo "Creating LVM layout..." >&2
+    do_cmd pvcreate -q -ff -y "${PARTITION_DEV}" || return 1
+    do_cmd vgcreate -q xenclient "${PARTITION_DEV}" || return 1
     do_cmd create_lv xenclient boot --size 12M || return 1
     do_cmd create_lv xenclient config --size 12M || return 1
     do_cmd create_lv xenclient root --size ${DOM0_ROOT_LV_SIZE} || return 1
@@ -48,10 +49,10 @@ mk_xc_lvm()
     do_cmd create_lv xenclient cores --size 64M || return 1
     do_cmd create_lv xenclient storage -l +100%FREE || return 1
 
-    do_cmd lvresize -f /dev/xenclient/storage -L-1G || return 1
+    do_cmd lvresize -q -f /dev/xenclient/storage -L-1G || return 1
 
-    do_cmd vgscan || return 1
-    do_cmd vgchange -a y xenclient || return 1
+    do_cmd vgscan -q || return 1
+    do_cmd vgchange -q -a y xenclient || return 1
 }
 
 apply_xc_packages()
@@ -187,6 +188,7 @@ install_dom0()
     local config_lv=/dev/xenclient/config
 
     mixedgauge "Creating disk volumes..." ${PERCENT}
+    echo "Creating disk volumes..." >&2
     # Genereally PERCENT=10 and next phase will jump to 50, going in 5% increments
     # gives 6 status updates without causing MS style progress bars
     PERCENT=$((PERCENT + 5))
@@ -201,8 +203,9 @@ install_dom0()
     PERCENT=$((PERCENT + 5))
 
     # Setup rootfs first
+    echo "Writing Dom0 rootfs..." >&2
     write_rootfs ${DOM0_ROOTFS} ${ROOTFS_TYPE} ${ROOT_DEV}.new >&2 || return 1
-    do_cmd mke2fs -j /dev/xenclient/boot                       >&2 || return 1
+    do_cmd mke2fs -q -j /dev/xenclient/boot                    >&2 || return 1
     do_cmd mkfs.ext4 -N 65536 -q /dev/xenclient/storage        >&2 || return 1
     do_cmd tune2fs -i 0 -c -1 -m 0 /dev/xenclient/boot         >&2 || return 1
     do_cmd tune2fs -i 0 -c -1 -m 0 /dev/xenclient/storage      >&2 || return 1
@@ -217,32 +220,31 @@ install_dom0()
     mixedgauge "Formatting storage..." ${PERCENT}
     PERCENT=$((PERCENT + 5))
 
-    # do_cmd doesn't do pipes -- what's wrong with set -x ?
-    # TODO: need to see if these set -x/set +x switching can be eliminated
-    set -x
-
     #
     # config
     #
-    cryptsetup -q -i 600 --cipher=aes-xts-plain64 luksFormat ${config_lv} ${RECOVERY_KEY} >&2 || {
+    echo "Setting up encryption on config logical volume..." >&2
+    if ! do_cmd cryptsetup -q -i 600 --cipher=aes-xts-plain64 luksFormat "${config_lv}" "${RECOVERY_KEY}" >&2; then
         rm -f ${RECOVERY_KEY}
-        set +x
+        echo "ERROR: Could not setup encryption on config logical volume." >&2
         return 1
-    }
+    fi
     local PLATFORM_KEY=$(gen_platform_key ${DOM0_MOUNT})
     set_platform_key ${RECOVERY_KEY} ${PLATFORM_KEY} ${config_lv}
     # Open config lv.
-    cryptsetup -q -d ${RECOVERY_KEY} luksOpen /dev/xenclient/config config >&2 || {
-        set +x
+    echo "Opening encrypted config logical volume..." >&2
+    if ! do_cmd cryptsetup -q -d ${RECOVERY_KEY} luksOpen /dev/xenclient/config config; then
+        echo "ERROR: Could not open encrypted config logical volume." >&2
         return 1
-    }
+    fi
 
     # Formatting and mounting config first so we can lay down the keys directly
-    set +x
+    echo "Formatting config encrypted partition..." >&2
     do_cmd mkfs.ext3 -q /dev/mapper/config                  >&2 || return 1
     do_cmd tune2fs -i 0 -c -1 -m 0 /dev/mapper/config       >&2 || return 1
 
     # mount config and copy dom0 /config
+    echo "Mounting config encrypted partition..." >&2
     do_mount /dev/mapper/config ${TEMP_CONFIG_MOUNT}        >&2 || return 1
     do_cmd rsync --archive --xattrs \
         ${DOM0_MOUNT}/config/ ${TEMP_CONFIG_MOUNT}          >&2 || return 1
@@ -250,6 +252,7 @@ install_dom0()
         ${DOM0_MOUNT}/config                                >&2 || return 1
 
     # setup so keys can be written directly
+    echo "Preparing config encrypted partition..." >&2
     do_cmd mkdir -p -m 500 ${DOM0_MOUNT}/config/keys        >&2 || return 1
     do_cmd mkdir -p -m 500 ${DOM0_MOUNT}/config/sec         >&2 || return 1
 
@@ -259,36 +262,41 @@ install_dom0()
     #
     # log
     #
-    set -x
+    echo "Setting up encryption on log logical volume..." >&2
     local LOG_KEY=$(gen_log_key ${DOM0_MOUNT})
-    cryptsetup -q -d ${LOG_KEY} create log /dev/xenclient/log >&2 || {
-        set +x
+    if ! cryptsetup -q -d ${LOG_KEY} create log /dev/xenclient/log >&2; then
+        echo "ERROR: Could not setup encryption on log logical volume." >&2
         return 1
-    }
+    fi
 
     #
     # cores
     #
+    echo "Setting up encryption on cores logical volume..." >&2
     local CORES_KEY=$(gen_cores_key ${DOM0_MOUNT})
     cryptsetup -q -d ${CORES_KEY} create cores /dev/xenclient/cores >&2 || {
-        set +x
+        echo "ERROR: Could not setup encryption on cores logical volume." >&2
         return 1
     }
 
     # device key (used to tie encrypted disks to this host)
     local DEVICE_KEY=$(gen_device_key ${DOM0_MOUNT})
 
-    set +x
-
+    echo "Formatting log encrypted partition..." >&2
     do_cmd mkfs.ext3 -q /dev/mapper/log                     >&2 || return 1
-    do_cmd mkfs.ext3 -q /dev/mapper/cores                   >&2 || return 1
-
     do_cmd tune2fs -i 0 -c -1 -m 0 /dev/mapper/log          >&2 || return 1
+
+    echo "Formatting cores encrypted partition..." >&2
+    do_cmd mkfs.ext3 -q /dev/mapper/cores                   >&2 || return 1
     do_cmd tune2fs -i 0 -c -1 -m 0 /dev/mapper/cores        >&2 || return 1
 
+    echo "Mounting log encrypted partition..." >&2
     do_mount /dev/mapper/log    ${DOM0_MOUNT}/var/log       >&2 || return 1
+
+    echo "Mounting log encrypted partition..." >&2
     do_mount /dev/mapper/cores  ${DOM0_MOUNT}/var/cores     >&2 || return 1
 
+    echo "Preparing log and cores encrypted partition..." >&2
     # Reserve 4GB on storage
     do_cmd falloc ${DOM0_MOUNT}/storage/xc-reserved 4096    >&2 || return 1
 
@@ -308,9 +316,12 @@ install_dom0()
 
     if [ "${MEASURE_LAUNCH}" = "true" ]; then
         mixedgauge "Configuring Measured Launch... Press random keys to speed up the sealing process." ${PERCENT}
+        echo "Configuring Measured Launch... Press random keys to speed up the sealing process." >&2
+
         PERCENT=$((PERCENT + 5))
         CONFIG_KEY=$(configure_measured_launch "${DOM0_MOUNT}" "${RECOVERY_KEY}" "${config_lv}") || return 1
         mixedgauge "Keying material generated successfully..." ${PERCENT}
+        echo "Keying material generated successfully..." >&2
 
         quirk_fix "${DOM0_MOUNT}"
         if [ $? -ne 0 ]; then
@@ -363,8 +374,8 @@ upgrade_dom0()
         return 1
     fi
 
-    do_cmd lvremove -f ${ROOT_DEV}.new >&2
-    do_cmd lvremove -f ${ROOT_DEV}.old >&2
+    do_cmd lvremove -q -f ${ROOT_DEV}.new >&2
+    do_cmd lvremove -q -f ${ROOT_DEV}.old >&2
 
     mixedgauge "Upgrading filesystem..." ${PERCENT}
     PERCENT=$((PERCENT + 30))
@@ -379,6 +390,7 @@ upgrade_dom0()
         --size ${DOM0_ROOT_LV_SIZE} >&2 || return 1
     write_rootfs ${DOM0_ROOTFS} ${ROOTFS_TYPE} ${ROOT_DEV}.new >&2 || {
         do_cmd lvremove -f ${ROOT_DEV}.new >&2
+        echo "ERROR: Failed to write Dom0 rootfs." >&2
         return 1
     }
     do_cmd sync >&2
@@ -420,8 +432,7 @@ commit_dom0()
 
     do_cmd mkdir -p ${DOM0_MOUNT}/storage/disks || return 1
 
-    copy_to_esp
-    if [ $? -eq 1 ]; then
+    if ! copy_to_esp; then
         return 1
     fi
 

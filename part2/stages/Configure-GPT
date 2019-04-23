@@ -31,7 +31,7 @@
 
 mbr_in_whitelist()
 {
-    local MBR_CHECKSUM=$(dd "if=/dev/${TARGET_DISK}" bs=440 count=1 | \
+    local MBR_CHECKSUM=$(dd "if=/dev/${TARGET_DISK}" bs=440 count=1 2>/dev/null | \
                          sha256sum | \
                          sed 's/ .*//')
 

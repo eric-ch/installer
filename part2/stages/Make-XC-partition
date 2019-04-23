@@ -33,7 +33,7 @@ deactivate_lvm()
 {
     mixedgauge "Deactivating existing logical volumes..." 0
 
-    if ! do_cmd vgchange -a n >&2 ; then
+    if ! do_cmd vgchange -q -a n >&2 ; then
         echo "ERROR: Failure deactivating existing logical volumes." >&2
         return 1
     fi
@@ -52,7 +52,10 @@ create_xc_partition()
 
     if [ "${CREATE_XC_PARTITION}" = "true" ] ; then
         mixedgauge "Creating ${PRODUCT_BRAND} disk partition..." 10
-        do_cmd sgdisk -N ${PARTITION_NUM} -t ${PARTITION_NUM}:${XC_PARTITION_TYPE} "${DISK_DEV}" >&2
+        if do_cmd sgdisk -q -N ${PARTITION_NUM} -t ${PARTITION_NUM}:${XC_PARTITION_TYPE} "${DISK_DEV}" >/dev/null 2>&1; then
+            echo "ERROR: Could not create ${PRODUCT_BRANCH} disk partition." >&2
+            return 1
+        fi
         realign_xc_partition
     fi
 
@@ -61,7 +64,7 @@ create_xc_partition()
     # Set the legacy boot flag attribute 
     # This is likely not needed for a GPT-based disk, but a small portion of BIOS's will
     # refuse to boot if it is not set
-    do_cmd sgdisk -A ${PARTITION_NUM}:set:${BOOT_FLAG_BIT} "${DISK_DEV}" >&2
+    do_cmd sgdisk -q -A ${PARTITION_NUM}:set:${BOOT_FLAG_BIT} "${DISK_DEV}" >&2
 
     # Set the active boot flag for the protective MBR if in legacy mode
     # Some BIOSes will refuse to use a GPT scheme on legacy boot without it
@@ -78,7 +81,7 @@ create_xc_partition()
     reread_partition_table "${DISK_DEV}" || return 1
 
     echo "Zero-ing the first 512 bytes of ${PARTITION_DEV}:" >&2
-    do_cmd dd if=/dev/zero of="${PARTITION_DEV}" bs=512 count=1
+    do_cmd dd if=/dev/zero of="${PARTITION_DEV}" bs=512 count=1 2>/dev/null
     do_cmd sync
 
     return 0
@@ -136,12 +139,16 @@ realign_xc_partition()
         echo "Realigning ${PRODUCT_BRAND} partition: moving first sector" \
              "from {FIRST_SECTOR} to ${ALIGNED_FIRST_SECTOR}" >&2
 
-        do_cmd gdisk "${DISK_DEV}" <<EOF >&2
+        do_cmd gdisk "${DISK_DEV}" <<EOF >/dev/null 2>&1
 x
 l
 ${ALIGNED_FIRST_SECTOR}
 w
 EOF
+        if [ "$?" -ne "0" ]; then
+            echo "ERROR: Could not realign ${PRODUCT_BRANCH} partition first sector." >&2
+            exit 1
+        fi
     fi
 }
 
