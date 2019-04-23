@@ -42,7 +42,7 @@ create_efi_system_partition()
     echo "No ESP detected, attempting to create a ESP." >&2
 
     # Create the ESP
-    if ! do_cmd sgdisk -q -g -n ${ESP_PARTNUM}::${ESP_SIZE} -t ${ESP_PARTNUM}:${ESP_TYPE} "${DISK_DEV}" >/dev/null 2>&1 ; then
+    if ! do_cmd sgdisk -q -g -n ${ESP_PARTNUM}::${ESP_SIZE} -t ${ESP_PARTNUM}:${ESP_TYPE} "${DISK_DEV}" >/dev/null; then
         echo "ERROR: Could not create EFI System Partition." >&2
         return 1
     fi
