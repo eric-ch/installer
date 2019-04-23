@@ -313,7 +313,7 @@ bc_greater_or_equal()
 # XC_PARTITION format is 'DISKNAME/PARTITION'
 get_partition_disk()
 {
-    echo "${1%%/*}"
+    echo "${1%/*}"
 }
 
 # Usage: get_partition_number XC_PARTITION
