@@ -41,7 +41,7 @@ create_bios_boot_partition()
 
     echo "No BBP detected, attempting to create a BBP." >&2
     # Create the BBP
-    if ! do_cmd sgdisk -q -g -n ${BBP_PARTNUM}::${BBP_SIZE} -t ${BBP_PARTNUM}:${BBP_TYPE} "${DISK_DEV}" >/dev/null 2>&1 ; then
+    if ! do_cmd sgdisk -q -g -n ${BBP_PARTNUM}::${BBP_SIZE} -t ${BBP_PARTNUM}:${BBP_TYPE} "${DISK_DEV}" >&2 ; then
         echo "ERROR: Could not create BIOS Boot Partition." >&2
         return 1
     fi

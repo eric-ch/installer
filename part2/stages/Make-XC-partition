@@ -52,7 +52,7 @@ create_xc_partition()
 
     if [ "${CREATE_XC_PARTITION}" = "true" ] ; then
         mixedgauge "Creating ${PRODUCT_BRAND} disk partition..." 10
-        if do_cmd sgdisk -q -N ${PARTITION_NUM} -t ${PARTITION_NUM}:${XC_PARTITION_TYPE} "${DISK_DEV}" >/dev/null 2>&1; then
+        if do_cmd sgdisk -q -N ${PARTITION_NUM} -t ${PARTITION_NUM}:${XC_PARTITION_TYPE} "${DISK_DEV}" >&2; then
             echo "ERROR: Could not create ${PRODUCT_BRANCH} disk partition." >&2
             return 1
         fi
@@ -76,7 +76,7 @@ create_xc_partition()
     fi
 
     echo "New partition layout:" >&2
-    gdisk -l "${DISK_DEV}" >&2
+    do_cmd gdisk -l "${DISK_DEV}" >&2
 
     reread_partition_table "${DISK_DEV}" || return 1
 
@@ -113,7 +113,7 @@ realign_xc_partition()
         echo "Realigning ${PRODUCT_BRAND} partition: moving first sector" \
              "from {FIRST_SECTOR} to ${ALIGNED_FIRST_SECTOR}" >&2
 
-        do_cmd gdisk "${DISK_DEV}" <<EOF >/dev/null 2>&1
+        do_cmd gdisk "${DISK_DEV}" <<EOF >&2
 x
 l
 ${ALIGNED_FIRST_SECTOR}
